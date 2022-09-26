@@ -14,6 +14,7 @@ public class ChatServer {
     private int port;
     private Set<String> userNames = new HashSet<>();
     private Set<UserThread> userThreads = new HashSet<>();
+    private HashMap<String, ArrayList<UserThread>> groups = new HashMap<>();
 
     public ChatServer(int port) {
         this.port = port;
@@ -63,13 +64,70 @@ public class ChatServer {
         }
     }
 
-    void brodcastSelf(String message, String pmUser) {
+    void brodcastPM(String message, String pmUser) {
         for (UserThread aUser : userThreads) {
             if (aUser.getUsername().equalsIgnoreCase(pmUser)) {
                 aUser.sendMessage(message);
+                return;
             }
         }
     }
+
+    void brodcastGroup(String message, String groupName) {
+        for (int i = 0; i < groups.get(groupName).size(); i++) {
+            groups.get(groupName).get(i).sendMessage(message);
+        }
+    }
+
+    void createGroup(String groupName, ArrayList<UserThread> userNames){
+            // TODO Denne løkke bruges flere steder
+        if (!groups.containsKey(groupName)) groups.put(groupName, userNames);
+        /*
+        for (int i = 0; i < userNames.size(); i++) {
+            for (UserThread aUser : userThreads) {
+                brodcastPM("Indre: " + aUser.getUsername(), userNames.get(0).getUsername());
+                if (aUser.getUsername().equalsIgnoreCase(groups.get(groupName).get(i).getUsername())) {
+                    groups.get(groupName).add(aUser);
+                    break;
+                }
+            }
+        }
+
+         */
+
+    }
+
+    void addOrJoinGroup(String groupName, String userName) {
+        if(!groups.get(groupName).isEmpty()) {
+            for (UserThread aUser : userThreads) {
+                if (aUser.getUsername().equalsIgnoreCase(userName)) {
+                    groups.get(groupName).add(aUser);
+                    return;
+                }
+            }
+        }
+    }
+
+    public void removeUserFromGroup(String groupName, String userName) {
+        for (UserThread aUser : groups.get(groupName)) {
+            if (aUser.getUsername().equalsIgnoreCase(userName)) {
+                groups.get(groupName).remove(aUser);
+                return;
+            }
+        }
+    }
+
+    UserThread convertStringToUT(String userName){
+        for (UserThread aUser : userThreads) {
+            if (aUser.getUsername().equalsIgnoreCase(userName)) {
+                return aUser;
+            }
+        }
+        return null;
+    }
+
+
+
 
     /**
      * Stores username of the newly connected client.
@@ -91,6 +149,10 @@ public class ChatServer {
 
     Set<String> getUserNames() {
         return this.userNames;
+    }
+
+    public HashMap<String, ArrayList<UserThread>> getGroups() {
+        return groups;
     }
 
     /**
@@ -142,7 +204,29 @@ class UserThread extends Thread {
                 String[] pmUser = clientMessage.split(" ");
                 if(pmUser[0].equalsIgnoreCase("pm")) {
                     serverMessage = "[" + userName + " PRIVATE]: " + clientMessage;
-                    server.brodcastSelf(serverMessage, pmUser[1]);
+                    server.brodcastPM(serverMessage, pmUser[1]);
+                } else if(pmUser[0].equalsIgnoreCase("createGroup")) {
+                    ArrayList<UserThread> users = new ArrayList<>();
+                    users.add(this);
+                    for (int i = 2; i < pmUser.length; i++) {
+                        users.add(server.convertStringToUT(pmUser[i]));
+                    }
+                    server.createGroup(pmUser[1], users);
+                    server.broadcast("Gruppen \"" + pmUser[1] + "\" er oprettet af: " + this.getUsername(), null);
+                } else if(pmUser[0].equalsIgnoreCase("joinGroup")) {
+                    server.addOrJoinGroup(pmUser[1], this.userName);
+                    server.broadcast(this.userName + " Joiner gruppen " + pmUser[1], null);
+                } else if(pmUser[0].equalsIgnoreCase("addToGroup")) {
+                    server.addOrJoinGroup(pmUser[1], pmUser[2]);
+                    server.brodcastPM("You have been added to the group: " + pmUser[1], pmUser[2]);
+                }  else if(pmUser[0].equalsIgnoreCase("group")) {
+                    server.brodcastGroup(clientMessage.substring(pmUser[0].length() + pmUser[1].length() + 1)
+                            , pmUser[1]);
+                    //server.broadcast(clientMessage.substring(pmUser[0].length()+ pmUser[1].length()+1)
+                    //        , null);
+                } else if (pmUser[0].equalsIgnoreCase("removeUser")) {
+                    server.removeUserFromGroup(pmUser[1], pmUser[2]);
+                    server.broadcast("User: " + pmUser[2] + " has been removed from group: " + pmUser[1], null);
                 } else {
                     serverMessage = "[" + userName + "]: " + clientMessage;
                     server.broadcast(serverMessage, this);
